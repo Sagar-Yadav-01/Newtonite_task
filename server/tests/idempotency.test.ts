@@ -73,4 +73,43 @@ describe('Idempotency Duplicate Request Protection', () => {
     expect(res2.status).toBe(409);
     expect(res2.body.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
   });
+
+  it('handles simultaneous concurrent duplicate requests cleanly with single DB record created', async () => {
+    const { authHeader } = await getAuthToken('admin@newtonite.com', 'password123');
+    const team = await prisma.team.findFirst();
+
+    const timestamp = Date.now();
+    const idempotencyKey = `key_concurrent_${timestamp}`;
+    const testTitle = `Idempotency Concurrent Race Test ${timestamp}`;
+
+    const payload = {
+      title: testTitle,
+      description: 'Testing parallel simultaneous request idempotency',
+      teamId: team!.id,
+      priority: 'URGENT',
+    };
+
+    const [resA, resB] = await Promise.all([
+      request
+        .post('/api/work-items')
+        .set(authHeader)
+        .set('Idempotency-Key', idempotencyKey)
+        .send(payload),
+      request
+        .post('/api/work-items')
+        .set(authHeader)
+        .set('Idempotency-Key', idempotencyKey)
+        .send(payload),
+    ]);
+
+    expect(resA.status).toBe(201);
+    expect(resB.status).toBe(201);
+    expect(resA.body.id).toBe(resB.body.id);
+
+    const count = await prisma.workItem.count({
+      where: { title: testTitle },
+    });
+    expect(count).toBe(1);
+  });
 });
+

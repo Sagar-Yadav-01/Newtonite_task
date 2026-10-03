@@ -77,6 +77,8 @@ model WorkItem {
   @@index([updatedAt])
   @@index([createdAt])
   @@index([teamId, status])
+  @@index([teamId, deletedAt])
+  @@index([assigneeId, status])
 }
 
 model Comment {

@@ -15,7 +15,13 @@ The platform must support instant evaluator setup (`npm run dev` and `npm test` 
 - **Production & Deployment**: `docker-compose.yml` spins up a PostgreSQL 15 container alongside the backend API service. Switching to PostgreSQL requires only updating `DATABASE_URL` in `.env`.
 
 ### Trade-offs & Considerations
-- **SQLite Concurrency Limitation**: SQLite uses file-level write locking. While Prisma transactions function correctly, SQLite does not support true row-level write locks under massive multi-writer concurrency. For enterprise scale (hundreds of simultaneous writes), switching to PostgreSQL via the provided `docker-compose.yml` provides row-level MVCC locking.
+- **SQLite (Development & Evaluation Engine)**:
+  - **Strengths**: Zero-dependency local setup, persistent local file (`server/prisma/dev.db`), instantaneous execution of unit/integration test suites without background daemons.
+  - **Limitations**: Uses database file locking for writes. Under high concurrent production multi-writer workloads, SQLite can experience write lock contention or `SQLITE_BUSY` errors.
+- **PostgreSQL (Production Deployment Option)**:
+  - **Strengths**: True multi-process Row-Level MVCC locking, high-throughput concurrent write handling, support for connection pooling (e.g. PgBouncer), horizontal scale-out.
+  - **Deployment**: Provided via `docker-compose.yml` (`postgres:15-alpine`). Setting `DATABASE_URL` to PostgreSQL targets this environment for production deployment.
+  - Note: SQLite and PostgreSQL do NOT have identical runtime characteristics under heavy multi-writer concurrency. SQLite is intentionally used to optimize developer speed and self-contained evaluability.
 
 ---
 
