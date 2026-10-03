@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: newtonite_postgres
+    environment:
+      POSTGRES_USER: newtonite_user
+      POSTGRES_PASSWORD: newtonite_password
+      POSTGRES_DB: newtonite_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newtonite_user -d newtonite_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: newtonite_backend
+    environment:
+      PORT: 5000
+      DATABASE_URL: "postgresql://newtonite_user:newtonite_password@postgres:5432/newtonite_db?schema=public"
+      JWT_SECRET: "newtonite_docker_jwt_secret_key_2026"
+      CLIENT_URL: "http://localhost:5173"
+      NODE_ENV: "production"
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

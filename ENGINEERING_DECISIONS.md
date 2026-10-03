@@ -1,0 +1,120 @@
+# ENGINEERING_DECISIONS.md — Newtonite Operations Work-Management Platform
+
+This document details the primary engineering decisions, architectural trade-offs, concurrency models, data consistency guarantees, and known limitations of the Newtonite operational system.
+
+---
+
+## 1. Decision 1: Dual Database Strategy & Data Modeling
+
+### Context & Need
+The platform must support instant evaluator setup (`npm run dev` and `npm test` without requiring local PostgreSQL installation) while remaining architecture-ready for multi-node enterprise PostgreSQL deployments.
+
+### Chosen Architecture
+- **Prisma ORM Layer**: Abstracts SQL dialect differences between SQLite and PostgreSQL.
+- **Development & Testing**: Prisma configured with SQLite (`dev.db`). All unit, integration, and race-condition tests run out-of-the-box in milliseconds without external daemons.
+- **Production & Deployment**: `docker-compose.yml` spins up a PostgreSQL 15 container alongside the backend API service. Switching to PostgreSQL requires only updating `DATABASE_URL` in `.env`.
+
+### Trade-offs & Considerations
+- **SQLite Concurrency Limitation**: SQLite uses file-level write locking. While Prisma transactions function correctly, SQLite does not support true row-level write locks under massive multi-writer concurrency. For enterprise scale (hundreds of simultaneous writes), switching to PostgreSQL via the provided `docker-compose.yml` provides row-level MVCC locking.
+
+---
+
+## 2. Decision 2: Optimistic Concurrency Control (OCC) via Integer Versioning
+
+### Business Problem
+Operational work items undergo frequent simultaneous reads and edits by multiple team members. Silently overwriting newer updates with stale data causes critical work loss and conflicting instructions.
+
+### Chosen Approach
+- Every `WorkItem` entity maintains an integer `version` field (starts at 1).
+- Every update request (`PATCH /api/work-items/:id`, status transitions, assignments) requires the client to supply the current `version`.
+- Server performs an atomic conditional update:
+  ```sql
+  UPDATE WorkItem
+  SET status = 'IN_PROGRESS', version = version + 1
+  WHERE id = '123' AND version = 5;
+  ```
+- If 0 rows are affected (meaning another user incremented `version` to 6 in the interim), the server rejects the request with HTTP `409 Conflict`:
+  ```json
+  {
+    "error": {
+      "code": "VERSION_CONFLICT",
+      "message": "This work item was modified by someone else.",
+      "requestId": "req_8f1a"
+    }
+  }
+  ```
+- **Frontend Reconciliation**: The TanStack Query client intercepts `409` responses, rolls back optimistic state mutations, displays a non-destructive conflict modal, and provides a **"[Refresh Item]"** button to sync with latest server state.
+
+---
+
+## 3. Decision 3: Resource-Level Server-Side Authorization Matrix
+
+### Architectural Constraint
+Frontend button hiding is decorative. All security boundaries MUST be enforced on the backend by inspecting persisted database relations.
+
+### Authorization Matrix
+| Action | ADMIN | Team Member | Non-member | Response |
+|---|---|---|---|---|
+| View team work item | Yes | Yes | No | `403 Forbidden` |
+| Create work item for team | Yes | Yes | No | `403 Forbidden` |
+| Edit work item | Yes | Yes (own team) | No | `403 Forbidden` |
+| Assign / Reassign work item | Yes | Yes (own team) | No | `403 Forbidden` |
+| Change workflow status | Yes | Yes (own team) | No | `403 Forbidden` |
+| Manage team members | Yes | No | No | `403 Forbidden` |
+| Archive work item | Yes | Yes (creator / team) | No | `403 Forbidden` |
+
+### Implementation Detail
+Before performing any resource mutation, the server loads the persisted `WorkItem` from the database, retrieves its actual `teamId`, and checks `TeamMember` membership for `req.user.id`. The server never trusts client-supplied `teamId` headers or route params.
+
+---
+
+## 4. Decision 4: Transactional WorkItem & Activity Log Consistency
+
+### Problem
+If a status change or assignment persists on a WorkItem, but activity history creation fails (e.g. log table storage error), management loses auditability.
+
+### Solution
+All multi-entity mutations are executed inside `prisma.$transaction`:
+```ts
+return prisma.$transaction(async (tx) => {
+  const updatedItem = await tx.workItem.updateMany({ ... });
+  await tx.activityLog.create({ ... });
+  return updatedItem;
+});
+```
+If activity log creation fails, the entire transaction rolls back automatically, preventing partial commits. Activity history is treated as append-only (no update or delete endpoints exposed).
+
+---
+
+## 5. Decision 5: Race-Safe Idempotency Key Architecture
+
+### Problem
+Slow network connections or accidental user double-clicks can submit duplicate work creation requests.
+
+### Solution
+- Mutating endpoints (`POST /api/work-items`) accept an optional `Idempotency-Key` HTTP header.
+- The `IdempotencyKey` model uses a database unique constraint: `UNIQUE(userId, key)`.
+- **Identical Request & Key**: Returns the cached original response payload (HTTP 201).
+- **Same Key, Different Payload**: Returns HTTP `409 Conflict` with `code: "IDEMPOTENCY_KEY_REUSED"`.
+- **Response Synchronization**: The middleware awaits database persistence of the `IdempotencyKey` record before flushing the HTTP response to the client, preventing microsecond race conditions during duplicate retries.
+
+---
+
+## 6. Soft Deletion & Archiving Strategy
+
+Work items are critical operational records and are never physically deleted from the database. Calling `DELETE /api/work-items/:id` sets `deletedAt = new Date()` and records a `WORK_ARCHIVED` event. All normal search, list, and detail queries filter out `deletedAt != null` items.
+
+---
+
+## 7. Pagination Strategy & Future Scaling
+
+- **Current Implementation**: Server-side offset pagination (`page` + `pageSize`, capped at `pageSize = 100`).
+- **Future Scaling**: For datasets exceeding 100,000 active work items, cursor-based pagination (e.g. `afterId` or timestamp cursors) will be implemented to prevent deep offset SQL query degradation.
+
+---
+
+## 8. Known Limitations
+
+1. **No Enterprise Single Sign-On (SSO)**: Uses standard JWT authentication; SAML 2.0 / OIDC integrations are out of scope for MVP.
+2. **Polling vs. Real-Time WebSockets**: Frontend relies on TanStack Query invalidation and manual refresh rather than a persistent WebSocket connection.
+3. **In-Memory Rate Limiting**: Auth rate limiter uses local process memory rather than a distributed Redis cluster.
