@@ -74,8 +74,8 @@ The database seed script initializes three accounts for testing end-to-end scena
 
 ### 1. Server-Side Authorization Matrix
 Authorization is enforced on every backend endpoint by querying the persisted database entity:
-- **ADMIN**: Access to all teams and operations.
-- **MEMBER**: Access limited strictly to work items belonging to teams they are a member of. Attempting unauthorized access returns `403 Forbidden`.
+- **ADMIN**: Access to all teams and operations (privileged system role).
+- **MEMBER**: Default role assigned to all public registrations. Access limited strictly to work items belonging to teams they are a member of. Ordinary members cannot elevate roles or modify user roles through any API endpoint (`403 Forbidden`).
 
 ### 2. Optimistic Concurrency Control (OCC)
 - Every `WorkItem` contains an integer `version`.
@@ -94,10 +94,11 @@ Claiming an unassigned work item uses atomic execution (`assigneeId = NULL` chec
 ## 📋 API Endpoints Summary
 
 ### Authentication & Users
-- `POST /api/auth/register` — Register new user
+- `POST /api/auth/register` — Register new user (always creates `MEMBER` accounts; client-provided role fields are ignored/stripped)
 - `POST /api/auth/login` — Sign in & receive JWT
 - `GET /api/auth/me` — Fetch current user profile
 - `GET /api/users` — List all users
+- `PATCH /api/users/:id` — Update user profile (`name` only; role modifications not allowed for ordinary members)
 
 ### Teams
 - `GET /api/teams` — List teams with member counts

@@ -7,7 +7,7 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string, role?: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -47,8 +47,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(userData);
   };
 
-  const register = async (name: string, email: string, password: string, role?: string) => {
-    const res = await api.post('/auth/register', { name, email, password, role });
+  const register = async (name: string, email: string, password: string) => {
+    const res = await api.post('/auth/register', { name, email, password });
     const { token: newToken, user: userData } = res.data;
     localStorage.setItem('newtonite_token', newToken);
     setToken(newToken);

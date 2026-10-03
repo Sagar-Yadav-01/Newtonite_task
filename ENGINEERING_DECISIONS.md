@@ -124,3 +124,15 @@ Work items are critical operational records and are never physically deleted fro
 1. **No Enterprise Single Sign-On (SSO)**: Uses standard JWT authentication; SAML 2.0 / OIDC integrations are out of scope for MVP.
 2. **Polling vs. Real-Time WebSockets**: Frontend relies on TanStack Query invalidation and manual refresh rather than a persistent WebSocket connection.
 3. **In-Memory Rate Limiting**: Auth rate limiter uses local process memory rather than a distributed Redis cluster.
+
+---
+
+## 9. Decision 9: User Role Elevation Protection & Public Registration Scope
+
+### Context & Security Vulnerability Audit
+Public registration endpoints (`POST /api/auth/register`) must never allow self-selection of administrative privileges (`role = ADMIN`). Furthermore, user profile update endpoints (`PATCH /api/users/:id`) must not allow ordinary members to elevate their own role or promote other users to `ADMIN`.
+
+### Chosen Architecture & Controls
+- **Public Registration**: `registerSchema` accepts only `name`, `email`, and `password`. Public registration always creates `MEMBER` accounts. Administrative privileges are not self-selectable because accepting a client-provided role would create a privilege-escalation vulnerability.
+- **User Updates**: `PATCH /api/users/:id` is validated via `updateUserSchema` which accepts non-security-sensitive fields (`name`). Non-admin attempts to modify `role` or update another user's profile are rejected with HTTP `403 Forbidden`.
+- **Administrative Privileges**: `ADMIN` remains a pre-seeded, privileged system role for global administrative operations. Role changes are not available to ordinary members via any public API. The application does not require a role-promotion UI for the current assessment scope.

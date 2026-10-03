@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from '../services/AuthService';
-import { registerSchema, loginSchema } from '../validators';
+import { registerSchema, loginSchema, updateUserSchema } from '../validators';
+import { ForbiddenError } from '../utils/errors';
 
 export class AuthController {
   public static async register(req: Request, res: Response, next: NextFunction) {
@@ -56,7 +57,14 @@ export class AuthController {
 
   public static async updateUser(req: Request, res: Response, next: NextFunction) {
     try {
-      const updated = await AuthService.updateUser(req.params.id, req.body);
+      if ('role' in req.body && req.user?.role !== 'ADMIN') {
+        throw ForbiddenError('Changing user role is forbidden.');
+      }
+      if (req.user?.role !== 'ADMIN' && req.user?.id !== req.params.id) {
+        throw ForbiddenError("You don't have permission to update another user's profile.");
+      }
+      const validated = updateUserSchema.parse(req.body);
+      const updated = await AuthService.updateUser(req.params.id, validated);
       res.status(200).json(updated);
     } catch (err) {
       next(err);

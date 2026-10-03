@@ -10,7 +10,6 @@ export const RegisterPage: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'MEMBER' | 'ADMIN'>('MEMBER');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -19,7 +18,7 @@ export const RegisterPage: React.FC = () => {
     setError(null);
     setIsSubmitting(true);
     try {
-      await register(name, email, password, role);
+      await register(name, email, password);
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Registration failed.');
@@ -91,18 +90,6 @@ export const RegisterPage: React.FC = () => {
                 className="w-full pl-9 pr-3 py-2 border border-neutral-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-neutral-900 focus:border-neutral-900"
               />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-neutral-700 mb-1">System Role</label>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as 'MEMBER' | 'ADMIN')}
-              className="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-neutral-900 focus:border-neutral-900 bg-white"
-            >
-              <option value="MEMBER">Member (Team Operations)</option>
-              <option value="ADMIN">Admin (Global Administrator)</option>
-            </select>
           </div>
 
           <button

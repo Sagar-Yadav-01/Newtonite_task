@@ -4,7 +4,7 @@ import { signToken } from '../utils/jwt';
 import { BadRequestError, NotFoundError, UnauthorizedError, ConflictError } from '../utils/errors';
 
 export class AuthService {
-  static async register(data: { name: string; email: string; password: string; role?: string }) {
+  static async register(data: { name: string; email: string; password: string }) {
     const existing = await prisma.user.findUnique({
       where: { email: data.email.toLowerCase().trim() },
     });
@@ -20,7 +20,7 @@ export class AuthService {
         name: data.name.trim(),
         email: data.email.toLowerCase().trim(),
         passwordHash,
-        role: data.role || 'MEMBER',
+        role: 'MEMBER',
       },
       select: {
         id: true,
@@ -99,12 +99,11 @@ export class AuthService {
     });
   }
 
-  static async updateUser(userId: string, data: { name?: string; role?: string }) {
+  static async updateUser(userId: string, data: { name?: string }) {
     const user = await prisma.user.update({
       where: { id: userId },
       data: {
         ...(data.name ? { name: data.name.trim() } : {}),
-        ...(data.role ? { role: data.role } : {}),
       },
       select: {
         id: true,
