@@ -222,13 +222,15 @@ export const WorkItemDetailPage: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             {/* Assign to me / Unassign */}
             {item.assigneeId !== currentUser?.id ? (
-              <button
-                onClick={() => assignMutation.mutate(currentUser!.id)}
-                disabled={assignMutation.isPending}
-                className="px-3 py-1.5 bg-neutral-900 text-white rounded text-xs font-medium hover:bg-neutral-800 transition-colors disabled:opacity-50"
-              >
-                Assign to me
-              </button>
+              item.status !== 'CLOSED' && (
+                <button
+                  onClick={() => assignMutation.mutate(currentUser!.id)}
+                  disabled={assignMutation.isPending}
+                  className="px-3 py-1.5 bg-neutral-900 text-white rounded text-xs font-medium hover:bg-neutral-800 transition-colors disabled:opacity-50"
+                >
+                  Assign to me
+                </button>
+              )
             ) : (
               <button
                 onClick={() => assignMutation.mutate(null)}
